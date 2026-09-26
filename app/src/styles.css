@@ -1,0 +1,503 @@
+:root {
+  color: #172033;
+  background: #f4f6fb;
+  font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  min-width: 320px;
+  min-height: 100vh;
+  line-height: 1.55;
+}
+
+button,
+input {
+  font: inherit;
+}
+
+button {
+  cursor: pointer;
+}
+
+button:focus-visible,
+input:focus-visible {
+  outline: 3px solid rgba(79, 70, 229, 0.3);
+  outline-offset: 2px;
+}
+
+.app-shell {
+  width: min(100% - 2rem, 1440px);
+  margin: 0 auto;
+  padding: 2rem 0 1.5rem;
+}
+
+.site-header {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 2rem;
+  margin-bottom: 1.75rem;
+}
+
+.site-header h1 {
+  margin: 0;
+  color: #111827;
+  font-size: clamp(2.35rem, 4vw, 3.75rem);
+  line-height: 0.95;
+  letter-spacing: -0.055em;
+}
+
+.eyebrow,
+.section-label {
+  margin: 0 0 0.4rem;
+  color: #4f46e5;
+  font-size: 0.75rem;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.tagline {
+  margin: 0.75rem 0 0;
+  color: #5c667a;
+  font-size: clamp(1rem, 1.5vw, 1.2rem);
+}
+
+.stage-badge,
+.attempt-chip,
+.live-indicator {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 999px;
+  font-size: 0.76rem;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  white-space: nowrap;
+}
+
+.stage-badge {
+  padding: 0.45rem 0.75rem;
+  color: #4338ca;
+  background: #e9e8ff;
+}
+
+.lesson-nav {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 0.7rem;
+  margin-bottom: 1rem;
+}
+
+.lesson-tab {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  min-height: 3.25rem;
+  padding: 0.7rem 0.8rem;
+  border: 1px solid #d8deeb;
+  border-radius: 0.75rem;
+  color: #455066;
+  background: #fff;
+  font-size: 0.88rem;
+  font-weight: 700;
+  text-align: left;
+  transition: border-color 150ms ease, background 150ms ease, transform 150ms ease;
+}
+
+.lesson-tab:hover {
+  border-color: #9aa6be;
+  transform: translateY(-1px);
+}
+
+.lesson-tab span {
+  display: grid;
+  flex: 0 0 1.7rem;
+  width: 1.7rem;
+  height: 1.7rem;
+  place-items: center;
+  border-radius: 50%;
+  background: #edf0f6;
+}
+
+.lesson-tab[aria-pressed="true"] {
+  border-color: #4f46e5;
+  color: #312e81;
+  background: #f0efff;
+  box-shadow: 0 0 0 1px #4f46e5;
+}
+
+.lesson-tab[aria-pressed="true"] span {
+  color: #fff;
+  background: #4f46e5;
+}
+
+.workspace {
+  display: grid;
+  grid-template-columns: minmax(22rem, 0.8fr) minmax(36rem, 1.45fr);
+  gap: 1rem;
+  align-items: start;
+}
+
+.learning-column {
+  display: grid;
+  gap: 1rem;
+}
+
+.card,
+.simulator-panel {
+  border: 1px solid #dde2ec;
+  border-radius: 1rem;
+  background: #fff;
+  box-shadow: 0 8px 26px rgba(29, 38, 61, 0.055);
+}
+
+.card {
+  padding: 1.25rem;
+}
+
+.card h2,
+.simulator-heading h2 {
+  margin: 0;
+  color: #182034;
+  font-size: clamp(1.15rem, 2vw, 1.45rem);
+  line-height: 1.25;
+}
+
+.lesson-card > p:not(.section-label) {
+  margin: 0.75rem 0 1rem;
+  color: #536077;
+}
+
+.button {
+  min-height: 2.65rem;
+  padding: 0.62rem 1rem;
+  border: 1px solid transparent;
+  border-radius: 0.65rem;
+  font-weight: 750;
+}
+
+.button--primary {
+  color: #fff;
+  background: #4f46e5;
+}
+
+.button--primary:hover:not(:disabled) {
+  background: #4038c7;
+}
+
+.button--secondary {
+  border-color: #cfd6e4;
+  color: #28344c;
+  background: #fff;
+}
+
+.button--secondary:hover {
+  border-color: #8895ad;
+  background: #f8f9fc;
+}
+
+.button:disabled {
+  cursor: not-allowed;
+  color: #929bad;
+  background: #e5e8ef;
+}
+
+fieldset {
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+legend {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  width: 100%;
+  margin-bottom: 0.35rem;
+  color: #182034;
+  font-size: 1.05rem;
+  font-weight: 800;
+}
+
+.attempt-chip {
+  padding: 0.3rem 0.58rem;
+  color: #4338ca;
+  background: #ecebff;
+  font-size: 0.68rem;
+  text-transform: uppercase;
+}
+
+.form-hint {
+  margin: 0 0 1rem;
+  color: #69748a;
+  font-size: 0.87rem;
+}
+
+.prediction-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.65rem;
+}
+
+.prediction-input {
+  display: grid;
+  gap: 0.35rem;
+  color: #4b566c;
+  font-size: 0.82rem;
+}
+
+.prediction-input input {
+  width: 100%;
+  min-height: 2.7rem;
+  padding: 0.5rem 0.65rem;
+  border: 1px solid #cfd6e4;
+  border-radius: 0.55rem;
+  color: #111827;
+  background: #fbfcfe;
+}
+
+.button-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.65rem;
+  margin-top: 1rem;
+}
+
+.status-message,
+.saved-result {
+  margin: 1rem 0 0;
+  padding: 0.75rem 0.9rem;
+  border-radius: 0.6rem;
+  color: #38445b;
+  background: #f0f3f8;
+  font-size: 0.88rem;
+}
+
+.status-message--error {
+  color: #8b2933;
+  background: #fff0f1;
+}
+
+.comparison-card h2 {
+  margin-bottom: 1rem;
+}
+
+.chart-legend {
+  display: flex;
+  gap: 1rem;
+  margin-bottom: 0.8rem;
+  color: #5d687c;
+  font-size: 0.78rem;
+}
+
+.chart-legend span {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.legend-dot {
+  width: 0.65rem;
+  height: 0.65rem;
+  border-radius: 0.15rem;
+}
+
+.legend-dot--prediction {
+  background: #6366f1;
+}
+
+.legend-dot--actual {
+  background: #0f9f76;
+}
+
+.outcome-row {
+  display: grid;
+  gap: 0.35rem;
+  padding: 0.8rem 0;
+  border-top: 1px solid #edf0f5;
+}
+
+.outcome-label {
+  color: #303b51;
+}
+
+.probability-bar {
+  display: grid;
+  grid-template-columns: 4.7rem minmax(5rem, 1fr) 4.5rem;
+  gap: 0.5rem;
+  align-items: center;
+  font-size: 0.78rem;
+}
+
+.probability-bar__label {
+  color: #667187;
+}
+
+.probability-bar__track {
+  height: 0.7rem;
+  overflow: hidden;
+  border-radius: 999px;
+  background: #e8ebf1;
+}
+
+.probability-bar__fill {
+  height: 100%;
+  min-width: 2px;
+  border-radius: inherit;
+}
+
+.probability-bar__value {
+  color: #303b51;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+.diagnosis {
+  margin: 1rem 0;
+  padding: 0.9rem 1rem;
+  border-left: 4px solid #64748b;
+  border-radius: 0.2rem 0.7rem 0.7rem 0.2rem;
+  color: #354158;
+  background: #f4f6f9;
+}
+
+.diagnosis--success {
+  border-left-color: #0f9f76;
+  background: #edfaf6;
+}
+
+.diagnosis--guided {
+  border-left-color: #d79017;
+  background: #fff8e8;
+}
+
+.diagnosis p {
+  margin: 0.35rem 0 0;
+}
+
+.saved-result {
+  margin: 0;
+  border: 1px solid #d8deeb;
+  background: #fff;
+}
+
+.simulator-panel {
+  position: sticky;
+  top: 1rem;
+  overflow: hidden;
+}
+
+.simulator-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 1rem 1.2rem;
+  border-bottom: 1px solid #dde2ec;
+}
+
+.live-indicator {
+  gap: 0.4rem;
+  padding: 0.35rem 0.6rem;
+  color: #08785a;
+  background: #e8f8f2;
+}
+
+.live-indicator i {
+  width: 0.48rem;
+  height: 0.48rem;
+  border-radius: 50%;
+  background: #0f9f76;
+}
+
+iframe {
+  display: block;
+  width: 100%;
+  height: min(72vh, 780px);
+  min-height: 560px;
+  border: 0;
+  background: #fff;
+}
+
+footer {
+  padding: 1.5rem 0 0;
+  color: #687389;
+  font-size: 0.82rem;
+  text-align: center;
+}
+
+@media (max-width: 1080px) {
+  .workspace {
+    grid-template-columns: 1fr;
+  }
+
+  .simulator-panel {
+    position: static;
+    grid-row: 1;
+  }
+
+  iframe {
+    height: 65vh;
+  }
+}
+
+@media (max-width: 760px) {
+  .app-shell {
+    width: min(100% - 1rem, 1440px);
+    padding-top: 1rem;
+  }
+
+  .site-header {
+    align-items: flex-start;
+    margin-bottom: 1.25rem;
+  }
+
+  .stage-badge {
+    display: none;
+  }
+
+  .lesson-nav {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .lesson-tab {
+    font-size: 0.8rem;
+  }
+
+  .card {
+    padding: 1rem;
+  }
+
+  iframe {
+    height: 68vh;
+    min-height: 480px;
+  }
+}
+
+@media (max-width: 440px) {
+  .lesson-nav,
+  .prediction-grid {
+    grid-template-columns: 1fr;
+  }
+
+  legend {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .button-row .button {
+    width: 100%;
+  }
+
+  .probability-bar {
+    grid-template-columns: 4.5rem minmax(3rem, 1fr) 3.8rem;
+  }
+}
