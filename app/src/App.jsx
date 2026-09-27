@@ -10,6 +10,10 @@ import {
   runCounterfactualAttribution,
 } from './services/counterfactualAttribution.js'
 import { CONFIDENCE_LEVELS, didCalibrationImprove } from './utils/calibration.js'
+import AnimatedContent from './components/AnimatedContent.jsx'
+import Aurora from './components/Aurora.jsx'
+import RubberSegment from './components/RubberSegment.jsx'
+import ShinyText from './components/ShinyText.jsx'
 import './styles.css'
 
 const PROBABILITY_TOLERANCE = 1e-6
@@ -17,6 +21,7 @@ const PROBABILITY_TOLERANCE = 1e-6
 const DIAGNOSIS_TOLERANCE = 0.05
 const NUMERIC_EPSILON = 1e-12
 const RETRY_STORAGE_KEY = 'qmentor.retry.v1'
+const CONCEPT_GRAPH_ORDER = ['superposition', 'measurement', 'interference', 'entanglement']
 
 const emptyPredictionFor = (lesson) => lesson.correct_probs.map(() => '')
 const circuitJsonFromHash = (hash) => decodeURIComponent(hash.replace(/^#circuit=/, ''))
@@ -79,6 +84,46 @@ const saveImprovement = (lessonId, record) => {
   }
 }
 
+const readAttemptOneResult = (lessonId) => {
+  try {
+    const record = JSON.parse(window.localStorage.getItem(RETRY_STORAGE_KEY) ?? '{}')[lessonId]
+    if (
+      Number.isFinite(record?.attempt1Error)
+      && CONFIDENCE_LEVELS.includes(record.attempt1Confidence)
+    ) {
+      return record
+    }
+  } catch {
+    // Ignore missing or malformed local data.
+  }
+  return null
+}
+
+const saveAttemptOneResult = (lessonId, attempt1Confidence, attempt1Error) => {
+  try {
+    let stored = JSON.parse(window.localStorage.getItem(RETRY_STORAGE_KEY) ?? '{}')
+    if (stored === null || typeof stored !== 'object' || Array.isArray(stored)) {
+      stored = {}
+    }
+    window.localStorage.setItem(RETRY_STORAGE_KEY, JSON.stringify({
+      ...stored,
+      [lessonId]: { attempt1Confidence, attempt1Error },
+    }))
+  } catch {
+    // Keep the lesson usable when storage is unavailable or malformed.
+  }
+}
+
+const masteryForLesson = (lessonId) => {
+  const record = readAttemptOneResult(lessonId)
+  if (record === null) {
+    return 'not-attempted'
+  }
+  return record.attempt1Error <= PROBABILITY_TOLERANCE
+    ? 'first-try-correct'
+    : 'needed-retry'
+}
+
 function ProbabilityBar({ label, value, color }) {
   return (
     <div className="probability-bar" aria-label={`${label} probability ${value}`}>
@@ -119,7 +164,12 @@ function AiLoadingNotice() {
   return (
     <p className="ai-loading" role="status" aria-live="polite">
       <span className="ai-loading__dot" aria-hidden="true" />
-      AI explanation is loading. Deterministic feedback is ready now.
+      <ShinyText
+        text="AI explanation is loading. Deterministic feedback is ready now."
+        color="#675319"
+        shineColor="#c47a0a"
+        speed={1.4}
+      />
     </p>
   )
 }
@@ -136,7 +186,10 @@ function Diagnosis({
   if (distributionsAreClose(prediction, actual)) {
     return (
       <div className="diagnosis diagnosis--success" aria-label="Diagnosis">
-        <strong>Result</strong>
+        <div className="diagnosis-heading">
+          <span className="diagnosis-icon" aria-hidden="true">✓</span>
+          <div><span>Accurate prediction</span><strong>Result</strong></div>
+        </div>
         <p>Your prediction matches the real simulator distribution.</p>
       </div>
     )
@@ -144,8 +197,16 @@ function Diagnosis({
 
   if (distributionsAreClose(prediction, lesson.common_wrong_guess)) {
     return (
-      <div className="diagnosis diagnosis--guided" aria-label="Diagnosis">
-        <p><strong>Misconception:</strong> {lesson.misconception_id}</p>
+      <div
+        className="diagnosis diagnosis--guided"
+        data-diagnosis="misconception"
+        aria-label="Diagnosis"
+        aria-busy={aiLoading}
+      >
+        <div className="diagnosis-heading">
+          <span className="diagnosis-icon" aria-hidden="true">!</span>
+          <div><span>Pattern detected</span><strong>Misconception: {lesson.misconception_id}</strong></div>
+        </div>
         {explanation ? (
           <GroundedExplanation
             feedback={explanation}
@@ -163,8 +224,16 @@ function Diagnosis({
   const counterfactualDiagnosis = describeCounterfactualAttribution(counterfactualAttribution)
   if (counterfactualDiagnosis !== null) {
     return (
-      <div className="diagnosis diagnosis--guided" aria-label="Diagnosis">
-        <p><strong>Counterfactual diagnosis</strong></p>
+      <div
+        className="diagnosis diagnosis--guided"
+        data-diagnosis="counterfactual"
+        aria-label="Diagnosis"
+        aria-busy={aiLoading}
+      >
+        <div className="diagnosis-heading">
+          <span className="diagnosis-icon" aria-hidden="true">↔</span>
+          <div><span>Closest circuit variant</span><strong>Counterfactual diagnosis</strong></div>
+        </div>
         <p>{counterfactualDiagnosis}</p>
         {explanation && (
           <GroundedExplanation
@@ -182,7 +251,10 @@ function Diagnosis({
 
   return (
     <div className="diagnosis" aria-label="Diagnosis">
-      <strong>Feedback</strong>
+      <div className="diagnosis-heading">
+        <span className="diagnosis-icon" aria-hidden="true">i</span>
+        <div><span>Review needed</span><strong>Feedback</strong></div>
+      </div>
       <p>Your prediction was not quite correct.</p>
       <p>Real simulator distribution: [{actual.join(', ')}]</p>
     </div>
@@ -219,9 +291,18 @@ function App() {
   const [savedImprovement, setSavedImprovement] = useState(() => (
     readSavedImprovement(lessons[0].id)
   ))
+  const [entryPath, setEntryPath] = useState(null)
+  const [explainedLessonId, setExplainedLessonId] = useState(null)
+  const [learnCircuitOpened, setLearnCircuitOpened] = useState(false)
 
   const selectedLesson = lessons.find((lesson) => lesson.id === selectedLessonId)
+  const conceptLessons = CONCEPT_GRAPH_ORDER.map(
+    (lessonId) => lessons.find((lesson) => lesson.id === lessonId),
+  )
   const actualProbabilities = readQuirkProbabilities(latestProbabilities)
+  const lessonMastery = Object.fromEntries(
+    lessons.map((lesson) => [lesson.id, masteryForLesson(lesson.id)]),
+  )
 
   useEffect(() => {
     const handleQuirkMessage = (event) => {
@@ -301,6 +382,21 @@ function App() {
     setAttemptOneConfidence(null)
     setConfidence('')
     setSavedImprovement(readSavedImprovement(lesson.id))
+  }
+
+  const chooseLesson = (lesson) => {
+    selectLesson(lesson)
+    if (entryPath === 'learn') {
+      setExplainedLessonId(lesson.id)
+      setLearnCircuitOpened(false)
+    }
+  }
+
+  const openSelectedCircuit = () => {
+    openStarterCircuit()
+    if (entryPath === 'learn') {
+      setLearnCircuitOpened(true)
+    }
   }
 
   const updatePredictionInput = (index, value) => {
@@ -424,6 +520,8 @@ function App() {
     if (attempt === 'initial') {
       setAttemptOneError(currentError)
       setAttemptOneConfidence(confidence)
+      saveAttemptOneResult(selectedLesson.id, confidence, currentError)
+      setSavedImprovement(null)
     } else if (attemptOneError !== null && attemptOneConfidence !== null) {
       const improvement = {
         improved: currentError < attemptOneError,
@@ -556,6 +654,10 @@ function App() {
   } else if (hasComparableResult) {
     learningState = 'Feedback ready'
   }
+  const conceptExplanationVisible = (
+    entryPath === 'test' || explainedLessonId === selectedLesson.id
+  )
+  const learningLoopVisible = entryPath === 'test' || learnCircuitOpened
 
   return (
     <div className="app-shell">
@@ -569,39 +671,124 @@ function App() {
       </header>
 
       <main>
-        <div
-          className="learning-status"
-          data-attempt={attempt}
-          data-state={learningState.toLowerCase().replaceAll(' ', '-')}
-          role="status"
-          aria-live="polite"
-        >
-          <span>{attempt === 'initial' ? 'Attempt 1' : 'Retry attempt'}</span>
-          <strong>{learningState}</strong>
-        </div>
+        {entryPath === null ? (
+          <section className="landing-panel" aria-labelledby="landing-title">
+            <div className="landing-aurora" aria-hidden="true">
+              <Aurora
+                colorStops={['#c7d2fe', '#a7f3d0', '#fde68a']}
+                amplitude={0.65}
+                blend={0.65}
+                speed={0.35}
+                lightMode
+              />
+            </div>
+            <div className="landing-content">
+              <p className="section-label">Choose your path</p>
+              <h2 id="landing-title">How would you like to begin?</h2>
+              <p>Build intuition by predicting real simulator outcomes before they are revealed.</p>
+              <div className="landing-actions">
+                <button className="button button--primary" type="button" onClick={() => setEntryPath('learn')}>
+                  <strong>Learn first</strong>
+                  <small>Explore the idea, then test it</small>
+                </button>
+                <button className="button button--secondary" type="button" onClick={() => setEntryPath('test')}>
+                  <strong>Test me now</strong>
+                  <small>Start directly with a prediction</small>
+                </button>
+              </div>
+            </div>
+          </section>
+        ) : (
+          <>
+            <div className="path-toolbar">
+              <span>{entryPath === 'learn' ? 'Learn first' : 'Test me now'}</span>
+              <button type="button" onClick={() => setEntryPath(null)}>Change entry path</button>
+            </div>
 
-        <nav className="lesson-nav" aria-label="Lessons">
-          {lessons.map((lesson, index) => (
-            <button
-              className="lesson-tab"
-              key={lesson.id}
-              type="button"
-              aria-pressed={lesson.id === selectedLessonId}
-              onClick={() => selectLesson(lesson)}
-            >
-              <span>{index + 1}</span>
-              {lesson.title}
-            </button>
-          ))}
-        </nav>
+            {learningLoopVisible && (
+              <div
+                className="learning-status"
+                data-attempt={attempt}
+                data-state={learningState.toLowerCase().replaceAll(' ', '-')}
+                role="status"
+                aria-live="polite"
+              >
+                <span>{attempt === 'initial' ? 'Attempt 1' : 'Retry attempt'}</span>
+                <strong>
+                  <ShinyText
+                    text={learningState}
+                    disabled={learningState !== 'Diagnosing' && learningState !== 'Feedback ready'}
+                    color={attempt === 'initial' ? '#4338ca' : '#9a5b08'}
+                    shineColor="#ffffff"
+                    speed={1.8}
+                  />
+                </strong>
+              </div>
+            )}
 
-        <div className="workspace">
+            <AnimatedContent distance={18} duration={0.45} threshold={0.01}>
+              <nav className="lesson-nav concept-map" aria-label="Quantum concept map">
+                <div className="concept-map__root">
+                  <small>Start here</small>
+                  <strong>Qubits</strong>
+                </div>
+                <div className="concept-map__lessons">
+                  {conceptLessons.map((lesson, index) => (
+                    <button
+                      className="lesson-tab concept-node"
+                      data-mastery={lessonMastery[lesson.id]}
+                      data-active={lesson.id === selectedLessonId ? '' : undefined}
+                      key={lesson.id}
+                      type="button"
+                      aria-pressed={lesson.id === selectedLessonId}
+                      aria-label={`${lesson.concept}: ${lessonMastery[lesson.id]}`}
+                      onClick={() => chooseLesson(lesson)}
+                    >
+                      <span className="journey-node__marker" aria-hidden="true">{index + 1}</span>
+                      <span className="journey-node__copy">
+                        <strong>{lesson.concept}</strong>
+                        <small>{lessonMastery[lesson.id]}</small>
+                      </span>
+                    </button>
+                  ))}
+                </div>
+              </nav>
+            </AnimatedContent>
+
+            {entryPath === 'learn' && !conceptExplanationVisible && (
+              <section className="concept-prompt" aria-live="polite">
+                <strong>Select a concept to learn first.</strong>
+                <p>Its short introduction will appear before you open the circuit.</p>
+              </section>
+            )}
+
+            {conceptExplanationVisible && !learningLoopVisible && (
+              <section className="card lesson-card concept-explanation" aria-labelledby="concept-title">
+                <p className="section-label">Concept explanation</p>
+                <h2 id="concept-title">{selectedLesson.concept}</h2>
+                <p className="concept-theory">{selectedLesson.theory}</p>
+                <div className="explainer-sequence" aria-label={`${selectedLesson.concept} explainer sequence`}>
+                  {selectedLesson.explainerSequence.map((step, index) => (
+                    <div className="explainer-step" key={`${index}-${step}`}>
+                      <span>{index + 1}</span>
+                      <strong>{step}</strong>
+                    </div>
+                  ))}
+                </div>
+                <button className="button button--secondary" type="button" onClick={openSelectedCircuit}>
+                  Open starter circuit in Quirk
+                </button>
+              </section>
+            )}
+
+            {learningLoopVisible && (
+              <div className="workspace">
           <div className="learning-column">
             <section className="card lesson-card" aria-labelledby="lesson-title">
               <p className="section-label">Current lesson</p>
               <h2 id="lesson-title">{selectedLesson.title}</h2>
               <p><strong>{selectedLesson.concept}:</strong> {selectedLesson.introduction}</p>
-              <button className="button button--secondary" type="button" onClick={openStarterCircuit}>
+              <button className="button button--secondary" type="button" onClick={openSelectedCircuit}>
                 Open starter circuit in Quirk
               </button>
             </section>
@@ -634,15 +821,27 @@ function App() {
                     )
                   })}
                 </div>
-                <label className="confidence-input">
-                  <span>How confident are you?</span>
-                  <select value={confidence} onChange={(event) => updateConfidence(event.target.value)}>
-                    <option value="">Select confidence</option>
-                    <option value="low">Low</option>
-                    <option value="medium">Medium</option>
-                    <option value="high">High</option>
-                  </select>
-                </label>
+                <fieldset className="confidence-input">
+                  <legend>How confident are you?</legend>
+                  <RubberSegment
+                    aria-label="Prediction confidence"
+                    className="confidence-segment"
+                    items={[
+                      { value: 'low', label: 'Low' },
+                      { value: 'medium', label: 'Medium' },
+                      { value: 'high', label: 'High' },
+                    ]}
+                    value={confidence}
+                    onChange={updateConfidence}
+                    trackColor="#e9ecf4"
+                    thumbColor="#ffffff"
+                    textColor="#536077"
+                    activeTextColor="#312e81"
+                    radius={12}
+                    size="lg"
+                    draggable={false}
+                  />
+                </fieldset>
                 <div className="button-row">
                   <button className="button button--secondary" type="submit">Submit prediction</button>
                   <button
@@ -661,7 +860,11 @@ function App() {
             </form>
 
             {comparisonRequested && (
-              <section className="card comparison-card" aria-labelledby="comparison-title">
+              <section
+                className="card comparison-card"
+                aria-labelledby="comparison-title"
+                aria-busy={counterfactualStatus === 'running' || aiLoading}
+              >
                 <p className="section-label">Comparison</p>
                 <h2 id="comparison-title">
                   {attempt === 'initial' ? 'Attempt 1' : 'Retry attempt'}: predicted vs actual
@@ -747,6 +950,7 @@ function App() {
               </div>
               <span className="live-indicator"><i />Live</span>
             </div>
+            <p className="simulator-instruction">Drag a gate from the toolbox onto a wire below.</p>
             <iframe
               key={quirkFrameKey}
               ref={quirkFrameRef}
@@ -754,7 +958,10 @@ function App() {
               title="Quirk quantum circuit simulator"
             />
           </section>
-        </div>
+              </div>
+            )}
+          </>
+        )}
       </main>
 
       <footer>

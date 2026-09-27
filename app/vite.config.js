@@ -28,4 +28,9 @@ function exposeQuirkBuild() {
 
 export default defineConfig({
   plugins: [react(), exposeQuirkBuild()],
+  resolve: {
+    alias: {
+      '@': resolve(currentDirectory, './src'),
+    },
+  },
 })
