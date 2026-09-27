@@ -494,6 +494,33 @@ legend {
   margin-top: 0.8rem;
 }
 
+.feedback-source {
+  width: fit-content;
+  padding: 0.2rem 0.5rem;
+  border-radius: 999px;
+  color: #62521e;
+  background: rgba(255, 255, 255, 0.72);
+  font-size: 0.7rem;
+  font-weight: 800;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+}
+
+.feedback-source--ai {
+  color: #4338ca;
+  background: #ecebff;
+}
+
+.counterfactual-progress {
+  margin: 0.85rem 0 0;
+  padding: 0.65rem 0.75rem;
+  border-radius: 0.55rem;
+  color: #675319;
+  background: #fff8e8;
+  font-size: 0.82rem;
+  font-weight: 700;
+}
+
 .grounded-explanation > p {
   display: grid;
   gap: 0.15rem;
@@ -602,7 +629,6 @@ footer {
 
   .simulator-panel {
     position: static;
-    grid-row: 1;
   }
 
   iframe {

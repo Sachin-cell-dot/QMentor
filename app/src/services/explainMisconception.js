@@ -89,7 +89,7 @@ async function explainMisconception({
   })
   const apiKey = import.meta.env.VITE_OPENAI_API_KEY
   if (!apiKey) {
-    return fallback
+    return { explanation: fallback, source: 'fallback' }
   }
 
   const controller = new AbortController()
@@ -134,7 +134,7 @@ async function explainMisconception({
     })
 
     if (!response.ok) {
-      return fallback
+      return { explanation: fallback, source: 'fallback' }
     }
 
     const outputText = extractOutputText(await response.json())
@@ -143,9 +143,12 @@ async function explainMisconception({
       ...actual,
       ...(deterministicDiagnosis.counterfactual_distribution ?? []),
     ]
-    return parseStructuredExplanation(outputText ?? '', allowedNumbers) ?? fallback
+    const explanation = parseStructuredExplanation(outputText ?? '', allowedNumbers)
+    return explanation === null
+      ? { explanation: fallback, source: 'fallback' }
+      : { explanation, source: 'ai' }
   } catch {
-    return fallback
+    return { explanation: fallback, source: 'fallback' }
   } finally {
     window.clearTimeout(timeout)
   }

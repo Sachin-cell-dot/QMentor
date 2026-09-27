@@ -21,6 +21,9 @@ const distributionError = (prediction, actual) => prediction.reduce(
 )
 
 const probabilitiesFromQuirk = (payload) => {
+  if (Array.isArray(payload)) {
+    return payload.every(Number.isFinite) ? payload : null
+  }
   if (!Number.isInteger(payload?._height) || payload._height < 1 || payload?._buffer == null) {
     return null
   }

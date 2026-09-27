@@ -22,6 +22,9 @@ const emptyPredictionFor = (lesson) => lesson.correct_probs.map(() => '')
 const circuitJsonFromHash = (hash) => decodeURIComponent(hash.replace(/^#circuit=/, ''))
 
 const readQuirkProbabilities = (payload) => {
+  if (Array.isArray(payload)) {
+    return payload.every(Number.isFinite) ? payload : null
+  }
   if (!Number.isInteger(payload?._height) || payload._height < 1 || payload?._buffer == null) {
     return null
   }
@@ -91,9 +94,12 @@ function ProbabilityBar({ label, value, color }) {
   )
 }
 
-function GroundedExplanation({ feedback, prediction, actual, counterfactual }) {
+function GroundedExplanation({ feedback, source, prediction, actual, counterfactual }) {
   return (
     <div className="grounded-explanation" aria-label="Grounded explanation">
+      <span className={`feedback-source feedback-source--${source}`}>
+        {source === 'ai' ? 'AI-grounded explanation' : 'Deterministic fallback'}
+      </span>
       <p><strong>Cause</strong><span>{feedback.cause}</span></p>
       <p><strong>Evidence</strong><span>{feedback.evidence}</span></p>
       <p><strong>Next step</strong><span>{feedback.next_step}</span></p>
@@ -123,6 +129,7 @@ function Diagnosis({
   actual,
   lesson,
   explanation,
+  explanationSource,
   counterfactualAttribution,
   aiLoading,
 }) {
@@ -142,6 +149,7 @@ function Diagnosis({
         {explanation ? (
           <GroundedExplanation
             feedback={explanation}
+            source={explanationSource}
             prediction={prediction}
             actual={actual}
             counterfactual={null}
@@ -161,6 +169,7 @@ function Diagnosis({
         {explanation && (
           <GroundedExplanation
             feedback={explanation}
+            source={explanationSource}
             prediction={prediction}
             actual={actual}
             counterfactual={counterfactualAttribution.probabilities}
@@ -200,6 +209,7 @@ function App() {
   const [confidence, setConfidence] = useState('')
   const [comparisonRequested, setComparisonRequested] = useState(false)
   const [aiExplanation, setAiExplanation] = useState(null)
+  const [aiExplanationSource, setAiExplanationSource] = useState('fallback')
   const [aiLoading, setAiLoading] = useState(false)
   const [counterfactualAttribution, setCounterfactualAttribution] = useState(null)
   const [counterfactualStatus, setCounterfactualStatus] = useState('idle')
@@ -377,6 +387,7 @@ function App() {
       deterministicDiagnosis,
       explanationSeed: selectedLesson.explanation_seed,
     }))
+    setAiExplanationSource('fallback')
     setAiLoading(true)
 
     explainMisconception({
@@ -385,9 +396,10 @@ function App() {
       actual,
       deterministicDiagnosis,
       explanationSeed: selectedLesson.explanation_seed,
-    }).then((explanation) => {
+    }).then(({ explanation, source }) => {
       if (aiRequestKeyRef.current === requestKey) {
         setAiExplanation(explanation)
+        setAiExplanationSource(source)
         setAiLoading(false)
       }
     }).catch(() => {
@@ -588,7 +600,7 @@ function App() {
             <section className="card lesson-card" aria-labelledby="lesson-title">
               <p className="section-label">Current lesson</p>
               <h2 id="lesson-title">{selectedLesson.title}</h2>
-              <p><strong>{selectedLesson.concept}:</strong> {selectedLesson.explanation_seed}</p>
+              <p><strong>{selectedLesson.concept}:</strong> {selectedLesson.introduction}</p>
               <button className="button button--secondary" type="button" onClick={openStarterCircuit}>
                 Open starter circuit in Quirk
               </button>
@@ -687,11 +699,17 @@ function App() {
                         </div>
                       )
                     })}
+                    {counterfactualStatus === 'running' && (
+                      <p className="counterfactual-progress" role="status" aria-live="polite">
+                        Testing plausible circuit variants...
+                      </p>
+                    )}
                     <Diagnosis
                       prediction={submittedPrediction}
                       actual={actualProbabilities}
                       lesson={selectedLesson}
                       explanation={aiExplanation}
+                      explanationSource={aiExplanationSource}
                       counterfactualAttribution={counterfactualAttribution}
                       aiLoading={aiLoading}
                     />

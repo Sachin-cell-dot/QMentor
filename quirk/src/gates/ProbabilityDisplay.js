@@ -301,9 +301,16 @@ function singleChangeGateMaker(builder) {
         markAsDrawerNeedsSingleQubitDensityStats().
         setDrawer(GatePainting.makeDisplayDrawer(args => {
             let {row, col} = args.positionInCircuit;
+            let probability = args.stats.controlledWireProbabilityJustAfter(row, col);
+            if (window.parent !== window) {
+                window.parent.postMessage({
+                    type: "state_computed",
+                    probs: [1 - probability, probability]
+                }, "*");
+            }
             MathPainter.paintProbabilityBox(
                 args.painter,
-                args.stats.controlledWireProbabilityJustAfter(row, col),
+                probability,
                 args.rect,
                 args.focusPoints);
         }));
