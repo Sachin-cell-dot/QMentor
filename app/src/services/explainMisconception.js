@@ -1,24 +1,10 @@
-const OPENAI_RESPONSES_URL = 'https://api.openai.com/v1/responses'
-const MODEL = 'gpt-6-astra'
+import {
+  RESPONSE_KEYS,
+  RESPONSE_SCHEMA,
+} from '../../shared/explanationContract.js'
+
 const REQUEST_TIMEOUT_MS = 3000
-const RESPONSE_KEYS = ['cause', 'evidence', 'next_step']
-
-const RESPONSE_SCHEMA = {
-  type: 'object',
-  properties: {
-    cause: { type: 'string', minLength: 1 },
-    evidence: { type: 'string', minLength: 1 },
-    next_step: { type: 'string', minLength: 1 },
-  },
-  required: RESPONSE_KEYS,
-  additionalProperties: false,
-}
-
-const extractOutputText = (response) => response.output
-  ?.flatMap((item) => item.content ?? [])
-  .find((content) => content.type === 'output_text')
-  ?.text
-  ?.trim()
+const EXPLANATION_ENDPOINT = '/api/explain'
 
 const formatDistribution = (distribution) => `[${distribution.join(', ')}]`
 
@@ -87,48 +73,21 @@ async function explainMisconception({
     deterministicDiagnosis,
     explanationSeed,
   })
-  const apiKey = import.meta.env.VITE_OPENAI_API_KEY
-  if (!apiKey) {
-    return { explanation: fallback, source: 'fallback' }
-  }
-
   const controller = new AbortController()
   const timeout = window.setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS)
 
   try {
-    const response = await fetch(OPENAI_RESPONSES_URL, {
+    const response = await fetch(EXPLANATION_ENDPOINT, {
       method: 'POST',
       headers: {
-        Authorization: `Bearer ${apiKey}`,
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        model: MODEL,
-        store: false,
-        max_output_tokens: 180,
-        text: {
-          format: {
-            type: 'json_schema',
-            name: 'grounded_quantum_explanation',
-            strict: true,
-            schema: RESPONSE_SCHEMA,
-          },
-        },
-        instructions: [
-          'Return JSON containing cause, evidence, and next_step in 2–3 concise sentences total.',
-          'Use only numbers supplied in the input; never calculate, infer, invent, or restate other probability values.',
-          'Do not change, replace, or second-guess the deterministic diagnosis.',
-          'cause is the conceptual reason for the supplied diagnosis.',
-          'evidence references only the supplied prediction, actual, and counterfactual values.',
-          'next_step is one short actionable learning suggestion.',
-        ].join(' '),
-        input: JSON.stringify({
-          current_circuit_json: circuit,
-          submitted_prediction: prediction,
-          real_quirk_actual_probabilities: actual,
-          deterministic_diagnosis: deterministicDiagnosis,
-          explanation_seed: explanationSeed,
-        }),
+        circuit,
+        prediction,
+        actual,
+        deterministicDiagnosis,
+        explanationSeed,
       }),
       signal: controller.signal,
     })
@@ -137,7 +96,8 @@ async function explainMisconception({
       return { explanation: fallback, source: 'fallback' }
     }
 
-    const outputText = extractOutputText(await response.json())
+    const payload = await response.json()
+    const outputText = typeof payload?.outputText === 'string' ? payload.outputText : ''
     const allowedNumbers = [
       ...prediction,
       ...actual,

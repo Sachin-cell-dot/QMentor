@@ -9,9 +9,11 @@ import {
   distributionError,
   runCounterfactualAttribution,
 } from './services/counterfactualAttribution.js'
+import { parseQiskitCode } from './services/qiskitCodeParser.js'
 import { CONFIDENCE_LEVELS, didCalibrationImprove } from './utils/calibration.js'
 import AnimatedContent from './components/AnimatedContent.jsx'
 import Aurora from './components/Aurora.jsx'
+import InstructorDemoDashboard from './components/InstructorDemoDashboard.jsx'
 import RubberSegment from './components/RubberSegment.jsx'
 import ShinyText from './components/ShinyText.jsx'
 import './styles.css'
@@ -21,7 +23,14 @@ const PROBABILITY_TOLERANCE = 1e-6
 const DIAGNOSIS_TOLERANCE = 0.05
 const NUMERIC_EPSILON = 1e-12
 const RETRY_STORAGE_KEY = 'qmentor.retry.v1'
-const CONCEPT_GRAPH_ORDER = ['superposition', 'measurement', 'interference', 'entanglement']
+const CONCEPT_GRAPH_ORDER = [
+  'superposition',
+  'measurement',
+  'interference',
+  'entanglement',
+  'ghz-state',
+  'deutsch-jozsa',
+]
 
 const emptyPredictionFor = (lesson) => lesson.correct_probs.map(() => '')
 const circuitJsonFromHash = (hash) => decodeURIComponent(hash.replace(/^#circuit=/, ''))
@@ -114,14 +123,37 @@ const saveAttemptOneResult = (lessonId, attempt1Confidence, attempt1Error) => {
   }
 }
 
-const masteryForLesson = (lessonId) => {
+const progressForLesson = (lessonId) => {
   const record = readAttemptOneResult(lessonId)
   if (record === null) {
-    return 'not-attempted'
+    return {
+      key: 'not-started',
+      status: 'Not Started',
+      detail: 'No prediction recorded yet.',
+      confidence: null,
+      retryCompleted: false,
+      calibrationImproved: null,
+    }
   }
-  return record.attempt1Error <= PROBABILITY_TOLERANCE
-    ? 'first-try-correct'
-    : 'needed-retry'
+
+  const retryCompleted = (
+    Number.isFinite(record.retryError)
+    && CONFIDENCE_LEVELS.includes(record.retryConfidence)
+  )
+  const latestError = retryCompleted ? record.retryError : record.attempt1Error
+  const mastered = latestError <= PROBABILITY_TOLERANCE
+  return {
+    key: mastered ? 'mastered' : 'needs-practice',
+    status: mastered ? 'Mastered' : 'Needs Practice',
+    detail: retryCompleted
+      ? (mastered ? 'Retry prediction matched the simulator result.' : 'Retry completed; continue practicing this concept.')
+      : (mastered ? 'First prediction matched the simulator result.' : 'First attempt completed; retry is still available.'),
+    confidence: retryCompleted ? record.retryConfidence : record.attempt1Confidence,
+    retryCompleted,
+    calibrationImproved: retryCompleted && typeof record.calibrationImproved === 'boolean'
+      ? record.calibrationImproved
+      : null,
+  }
 }
 
 function ProbabilityBar({ label, value, color }) {
@@ -294,15 +326,22 @@ function App() {
   const [entryPath, setEntryPath] = useState(null)
   const [explainedLessonId, setExplainedLessonId] = useState(null)
   const [learnCircuitOpened, setLearnCircuitOpened] = useState(false)
+  const [circuitInputMode, setCircuitInputMode] = useState('visual')
+  const [codeInput, setCodeInput] = useState('')
+  const [codeInputError, setCodeInputError] = useState('')
+  const [codeInputStatus, setCodeInputStatus] = useState('')
 
   const selectedLesson = lessons.find((lesson) => lesson.id === selectedLessonId)
   const conceptLessons = CONCEPT_GRAPH_ORDER.map(
     (lessonId) => lessons.find((lesson) => lesson.id === lessonId),
   )
   const actualProbabilities = readQuirkProbabilities(latestProbabilities)
-  const lessonMastery = Object.fromEntries(
-    lessons.map((lesson) => [lesson.id, masteryForLesson(lesson.id)]),
+  const lessonProgress = Object.fromEntries(
+    lessons.map((lesson) => [lesson.id, progressForLesson(lesson.id)]),
   )
+  const masteredConceptCount = lessons.filter(
+    (lesson) => lessonProgress[lesson.id].key === 'mastered',
+  ).length
 
   useEffect(() => {
     const handleQuirkMessage = (event) => {
@@ -358,6 +397,8 @@ function App() {
     setPredictionInputs(emptyPredictionFor(selectedLesson))
     setSubmittedPrediction(null)
     setPredictionFeedback('')
+    setCodeInputError('')
+    setCodeInputStatus('')
     setQuirkSource(`/quirk/quirk.html${selectedLesson.starterCircuitHash}`)
     setQuirkFrameKey((current) => current + 1)
   }
@@ -382,6 +423,8 @@ function App() {
     setAttemptOneConfidence(null)
     setConfidence('')
     setSavedImprovement(readSavedImprovement(lesson.id))
+    setCodeInputError('')
+    setCodeInputStatus('')
   }
 
   const chooseLesson = (lesson) => {
@@ -397,6 +440,41 @@ function App() {
     if (entryPath === 'learn') {
       setLearnCircuitOpened(true)
     }
+  }
+
+  const convertAndLoadCode = (event) => {
+    event.preventDefault()
+    let parsed
+    try {
+      parsed = parseQiskitCode(codeInput)
+    } catch (error) {
+      setCodeInputError(error instanceof Error ? error.message : 'Unable to parse this circuit.')
+      setCodeInputStatus('')
+      return
+    }
+
+    counterfactualAbortRef.current?.abort()
+    counterfactualAbortRef.current = null
+    counterfactualRequestKeyRef.current = null
+    setCounterfactualAttribution(null)
+    setCounterfactualStatus('idle')
+    setLatestCircuit(parsed.circuitJson)
+    setLatestProbabilities(null)
+    setComparisonRequested(false)
+    setAiExplanation(null)
+    setAiLoading(false)
+    aiRequestKeyRef.current = null
+    setAttempt('initial')
+    setAttemptOneError(null)
+    setAttemptOneConfidence(null)
+    setConfidence('')
+    setPredictionInputs(Array.from({ length: 2 ** parsed.qubitCount }, () => ''))
+    setSubmittedPrediction(null)
+    setPredictionFeedback('')
+    setCodeInputError('')
+    setCodeInputStatus(`Loaded a ${parsed.qubitCount}-qubit circuit in local Quirk.`)
+    setQuirkSource(parsed.iframePath)
+    setQuirkFrameKey((current) => current + 1)
   }
 
   const updatePredictionInput = (index, value) => {
@@ -696,15 +774,71 @@ function App() {
                   <small>Start directly with a prediction</small>
                 </button>
               </div>
+              <button className="progress-entry" type="button" onClick={() => setEntryPath('progress')}>
+                View learner progress
+              </button>
+              <button className="instructor-entry" type="button" onClick={() => setEntryPath('instructor')}>
+                Instructor demo
+              </button>
             </div>
           </section>
         ) : (
           <>
             <div className="path-toolbar">
-              <span>{entryPath === 'learn' ? 'Learn first' : 'Test me now'}</span>
+              <span>
+                {entryPath === 'learn'
+                  ? 'Learn first'
+                  : entryPath === 'test'
+                    ? 'Test me now'
+                    : entryPath === 'progress'
+                      ? 'Learner progress'
+                      : 'Instructor demo'}
+              </span>
               <button type="button" onClick={() => setEntryPath(null)}>Change entry path</button>
             </div>
 
+            {entryPath === 'progress' ? (
+              <section className="progress-screen" aria-labelledby="progress-title">
+                <div className="progress-summary">
+                  <div>
+                    <p className="section-label">Your progress</p>
+                    <h2 id="progress-title">Concept mastery</h2>
+                    <p>Progress is restored from your existing lesson attempts on this device.</p>
+                  </div>
+                  <strong>{masteredConceptCount}/{lessons.length} mastered</strong>
+                </div>
+                <div className="progress-list">
+                  {lessons.map((lesson) => {
+                    const progress = lessonProgress[lesson.id]
+                    return (
+                      <article className="progress-card" data-status={progress.key} key={lesson.id}>
+                        <span className="progress-card__icon" aria-hidden="true">
+                          {progress.key === 'mastered' ? '✓' : progress.key === 'needs-practice' ? '↻' : '○'}
+                        </span>
+                        <div className="progress-card__body">
+                          <h3>{lesson.concept}</h3>
+                          <p>{progress.detail}</p>
+                          {progress.confidence && (
+                            <small>Latest confidence: {progress.confidence}</small>
+                          )}
+                          {progress.calibrationImproved !== null && (
+                            <small>
+                              {progress.calibrationImproved
+                                ? 'Confidence calibration improved on retry.'
+                                : 'Confidence calibration still needs practice.'}
+                            </small>
+                          )}
+                        </div>
+                        <strong className="progress-card__status">{progress.status}</strong>
+                      </article>
+                    )
+                  })}
+                </div>
+              </section>
+            ) : entryPath === 'instructor' ? (
+              <InstructorDemoDashboard />
+            ) : (
+              <>
             {learningLoopVisible && (
               <div
                 className="learning-status"
@@ -736,18 +870,18 @@ function App() {
                   {conceptLessons.map((lesson, index) => (
                     <button
                       className="lesson-tab concept-node"
-                      data-mastery={lessonMastery[lesson.id]}
+                      data-mastery={lessonProgress[lesson.id].key}
                       data-active={lesson.id === selectedLessonId ? '' : undefined}
                       key={lesson.id}
                       type="button"
                       aria-pressed={lesson.id === selectedLessonId}
-                      aria-label={`${lesson.concept}: ${lessonMastery[lesson.id]}`}
+                      aria-label={`${lesson.concept}: ${lessonProgress[lesson.id].status}`}
                       onClick={() => chooseLesson(lesson)}
                     >
                       <span className="journey-node__marker" aria-hidden="true">{index + 1}</span>
                       <span className="journey-node__copy">
                         <strong>{lesson.concept}</strong>
-                        <small>{lessonMastery[lesson.id]}</small>
+                        <small>{lessonProgress[lesson.id].status}</small>
                       </span>
                     </button>
                   ))}
@@ -948,8 +1082,56 @@ function App() {
                 <p className="section-label">Live workspace</p>
                 <h2 id="simulator-title">Quirk circuit simulator</h2>
               </div>
-              <span className="live-indicator"><i />Live</span>
+              <div className="simulator-heading__actions">
+                <div className="circuit-mode-switch" role="tablist" aria-label="Circuit input mode">
+                  <button
+                    type="button"
+                    role="tab"
+                    aria-selected={circuitInputMode === 'visual'}
+                    onClick={() => {
+                      setCircuitInputMode('visual')
+                      setCodeInputError('')
+                    }}
+                  >
+                    Visual editor
+                  </button>
+                  <button
+                    type="button"
+                    role="tab"
+                    aria-selected={circuitInputMode === 'code'}
+                    onClick={() => setCircuitInputMode('code')}
+                  >
+                    Code input
+                  </button>
+                </div>
+                <span className="live-indicator"><i />Live</span>
+              </div>
             </div>
+            {circuitInputMode === 'code' && (
+              <form className="code-input-panel" onSubmit={convertAndLoadCode} noValidate>
+                <label htmlFor="qiskit-code">Qiskit-style circuit code</label>
+                <textarea
+                  id="qiskit-code"
+                  value={codeInput}
+                  onChange={(event) => {
+                    setCodeInput(event.target.value)
+                    setCodeInputError('')
+                    setCodeInputStatus('')
+                  }}
+                  placeholder={'qc.h(0)\nqc.cx(0,1)'}
+                  spellCheck="false"
+                />
+                <p className="code-input-hint">
+                  Supported: <code>qc.h(q)</code>, <code>qc.x(q)</code>,{' '}
+                  <code>qc.cx(control, target)</code>, <code>qc.measure(q, c)</code>, and{' '}
+                  <code>qc.measure_all()</code>.
+                </p>
+                <p className="code-input-order">Gates run in the order you write them.</p>
+                <button className="button button--primary" type="submit">Convert &amp; Load</button>
+                {codeInputError && <p className="code-input-error" role="alert">{codeInputError}</p>}
+                {codeInputStatus && <p className="code-input-status" role="status">{codeInputStatus}</p>}
+              </form>
+            )}
             <p className="simulator-instruction">Drag a gate from the toolbox onto a wire below.</p>
             <iframe
               key={quirkFrameKey}
@@ -959,6 +1141,8 @@ function App() {
             />
           </section>
               </div>
+            )}
+              </>
             )}
           </>
         )}
